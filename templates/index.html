@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Language Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1><i class="fas fa-sign-language"></i> Sign Language Detection</h1>
+            <p class="subtitle">Upload an image or use webcam to detect ASL alphabet signs</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="main-content">
+            <!-- Left Column -->
+            <div class="input-section">
+                <div class="card">
+                    <h2><i class="fas fa-upload"></i> Upload Image</h2>
+                    <form id="uploadForm">
+                        <div class="upload-area" id="dropArea">
+                            <i class="fas fa-cloud-upload-alt fa-3x"></i>
+                            <p>Drag & drop an image here</p>
+                            <p class="small">or</p>
+                            <label for="fileInput" class="btn">Choose File</label>
+                            <input type="file" id="fileInput" name="file" accept="image/*" required hidden>
+                        </div>
+                        <button type="submit" class="btn detect-btn">Detect Sign</button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Right Column -->
+            <div class="result-section">
+                <div class="card">
+                    <h2><i class="fas fa-chart-bar"></i> Results</h2>
+                    <div id="results">
+                        <p>Upload an image to see results</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>Sign Language Detection &copy; 2025</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
