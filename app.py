@@ -1,108 +1,93 @@
-import gradio as gr
-import tensorflow as tf
-import numpy as np
-import json
-from PIL import Image
+from flask import Flask, render_template, request, jsonify
 import os
+from werkzeug.utils import secure_filename
+import numpy as np
+from PIL import Image
+import tensorflow as tf
+import json
 
-# Reduce TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+app = Flask(__name__)
 
-# Load files
-print("🚀 Loading sign language model...")
+# Configuration
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 
-# Try to load model, but continue even if it fails
+# Load your model (update paths as needed)
+MODEL_PATH = 'sign_language_model_final.h5'
+CLASS_MAPPING_PATH = 'class_mapping.json'
+
+# Load model and class mapping
 try:
-    model = tf.keras.models.load_model('sign_language_model_final.h5')
-    print("✅ Model loaded successfully")
-except:
-    print("⚠️  Could not load model file")
-    model = None
-
-try:
-    with open('class_mapping.json', 'r') as f:
+    model = tf.keras.models.load_model(MODEL_PATH)
+    with open(CLASS_MAPPING_PATH, 'r') as f:
         class_mapping = json.load(f)
-    print(f"📊 Classes: {list(class_mapping.keys())}")
-except:
-    print("⚠️  Could not load class mapping")
-    class_mapping = {"Hello": 0, "Thank You": 1}  # Default
+    print("✅ Model loaded successfully!")
+except Exception as e:
+    print(f"❌ Error loading model: {e}")
+    model = None
+    class_mapping = {}
 
-def predict_sign(image):
-    """Simple prediction function"""
-    if model is None:
-        return "Model not loaded. Please check if model file exists."
-    
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def preprocess_image(image_path):
+    """Preprocess image for model prediction"""
     try:
-        # Convert to PIL Image
-        if isinstance(image, np.ndarray):
-            image = Image.fromarray(image)
-        
-        # Simple preprocessing
-        image = image.resize((64, 64)).convert('L')  # Resize to 64x64 grayscale
-        
-        # Convert to array and normalize
-        img_array = np.array(image) / 255.0
-        
-        # Reshape for model
-        img_array = img_array.reshape(1, 64, 64, 1)
-        
-        # Predict
-        predictions = model.predict(img_array, verbose=0)
-        class_idx = np.argmax(predictions[0])
-        confidence = predictions[0][class_idx]
-        
-        # Get class name
-        class_names = list(class_mapping.keys())
-        class_name = class_names[class_idx]
-        
-        return f"**Prediction:** {class_name}\n**Confidence:** {confidence:.1%}"
-    
+        img = Image.open(image_path)
+        img = img.resize((224, 224))  # Adjust based on your model
+        img_array = np.array(img) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
+        return img_array
     except Exception as e:
-        return f"Error processing image: {str(e)}"
+        print(f"Error preprocessing image: {e}")
+        return None
 
-# Create the web interface
-with gr.Blocks() as demo:
-    gr.Markdown("# ✋ Sign Language to Text Translator")
-    gr.Markdown("Upload an image of a sign language gesture to get the text translation")
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
     
-    with gr.Row():
-        with gr.Column():
-            # Webcam or file upload
-            image_input = gr.Image(
-                sources=["upload", "webcam"],
-                type="pil",
-                label="Upload or Capture Sign Language Image"
-            )
-            
-            # Predict button
-            predict_btn = gr.Button("Translate", variant="primary", size="lg")
-            
-            # Example text
-            gr.Markdown("**Examples you can recognize:**")
-            gr.Markdown("- Hello\n- Thank You\n- Yes\n- No\n- I Love You")
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    if file and allowed_file(file.filename):
+        # Save the uploaded file
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
         
-        with gr.Column():
-            # Output
-            output = gr.Markdown("## Prediction will appear here")
+        # Make prediction
+        if model:
+            processed_image = preprocess_image(filepath)
+            if processed_image is not None:
+                prediction = model.predict(processed_image)
+                predicted_class = np.argmax(prediction[0])
+                confidence = float(prediction[0][predicted_class])
+                
+                # Get letter from class mapping
+                letter = class_mapping.get(str(predicted_class), 'Unknown')
+                
+                # Return result
+                return jsonify({
+                    'success': True,
+                    'letter': letter,
+                    'confidence': confidence,
+                    'image_url': f'/static/uploads/{filename}'
+                })
+        
+        return jsonify({'error': 'Prediction failed'}), 500
     
-    # Connect button to function
-    predict_btn.click(
-        fn=predict_sign,
-        inputs=image_input,
-        outputs=output
-    )
-    
-    # Auto-predict when image is uploaded
-    image_input.change(
-        fn=predict_sign,
-        inputs=image_input,
-        outputs=output
-    )
-    
-    # Footer
-    gr.Markdown("---")
-    gr.Markdown("Built with TensorFlow and Gradio | Model: Sign Language Recognition")
+    return jsonify({'error': 'Invalid file type'}), 400
 
-# Launch
-if __name__ == "__main__":
-    demo.launch()
+if __name__ == '__main__':
+    # Create uploads folder if it doesn't exist
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    app.run(debug=True, port=5000)
